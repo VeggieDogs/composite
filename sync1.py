@@ -1,12 +1,13 @@
 import json
+from collections import defaultdict
 
 import requests
 import time  # Import time to measure execution duration
 
 urls = [
-    {"rel": "users", "href": ""},
-    {"rel": "product", "href": ""},
-    {"rel": "order", "href": ""}
+    {"rel": "users", "href": "http://192.168.1.153:8889/search_user?username=henry"},
+    {"rel": "products", "href": "http://192.168.1.153:8888/search_product?product_name=apple"},
+    {"rel": "orders", "href": "http://192.168.1.153:8890/search_order"}
 ]
 
 
@@ -25,12 +26,14 @@ def call_get(url):
 
 def call_get_urls(urls):
 
-    result = {}
+    result = defaultdict(list)
 
     for u in urls:
         r = call_get(u["href"])
-        t = r.get(u["rel"],r)
-        result[u["rel"]] = t
+            # print(element)
+            # print(u['rel'])
+        t = r.get(u["rel"])
+        result[u["rel"]].append(t)
 
     return result
 
