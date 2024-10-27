@@ -28,23 +28,25 @@ ORDER_SERVICE_URL = os.getenv('ORDER_SERVICE_URL', 'http://localhost:8890/')
 
 # Store the URLs in a list for easy iteration
 urls = [
-    {"rel": "users", "href": USER_SERVICE_URL},
-    {"rel": "products", "href": PRODUCT_SERVICE_URL},
-    {"rel": "orders", "href": ORDER_SERVICE_URL},
+    {"ms": "users", "rel": "search_user_by_id", "href": USER_SERVICE_URL},
+    {"ms": "products","rel": "search_products_by_user_id", "href": PRODUCT_SERVICE_URL},
+    {"ms": "orders","rel": "search_orders_by_id", "href": ORDER_SERVICE_URL},
 ]
 
 @app.before_request
 def log_request():
     """Start the timer to measure request execution time and log request details."""
     g.start_time = time.time()
+    logger.info(f"BEFORE_REQUEST")
     logger.info(f"Incoming {request.method} request to {request.path}")
-    logger.info(f"Query parameters: {request.args}")
+    logger.info(f"Query parameters: {request.args}\n")
 
 @app.after_request
 def log_response(response):
     """Log response details after processing."""
     execution_time = time.time() - g.start_time
-    logger.info(f"Response status: {response.status_code} | Time taken: {execution_time:.4f} seconds")
+    logger.info(f"AFTER_REQUEST")
+    logger.info(f"Response status: {response.status_code} | Time taken: {execution_time:.4f} seconds\n")
     return response
 
 def call_get(url):
@@ -61,14 +63,17 @@ def call_get(url):
         logger.error(f"An error occurred: {err}")
         return None
 
-def call_get_urls(urls, username=None):
+def call_get_urls(urls, user_id=None):
     """Calls multiple atomic services and returns aggregated results."""
     result = defaultdict(list)
     for u in urls:
-        r = call_get(u["href"])
+        get = u['href']+ u['rel'] + f'?user_id={user_id}'
+        # print(get)
+        r = call_get(get)
+        print(r)
         if r is not None:
-            t = r.get(u["rel"])
-            result[u["rel"]].append(t)
+            t = r.get(u["ms"])
+            result[u["ms"]].append(t)
         else:
             logger.warning(f"No response from {u['href']}")
     return result
@@ -100,7 +105,8 @@ def handle_get_request(microservice):
         param = request.args.get('user_id')
         return requests.get(urls[0]['href'] + (f'search_user?username={param}' if param else '')).json()
     elif microservice == 'all':
-        return call_get_urls(urls)
+        param = request.args.get('user_id')
+        return call_get_urls(urls, param)
     return {"error": "Unknown microservice"}
 
 def forward_post_to_products():
