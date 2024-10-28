@@ -1,4 +1,7 @@
+import re
 from flask import Flask, request, jsonify, g
+import asyncio
+import aiohttp
 from collections import defaultdict
 import json
 from flask_cors import CORS
@@ -49,6 +52,22 @@ def log_response(response):
     logger.info(f"Response status: {response.status_code} | Time taken: {execution_time:.4f} seconds\n")
     return response
 
+async def send_post_request(url, orders):
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, json=orders) as response:
+                if response.status == 201:
+                    result = await response.json()
+                    logger.info(f"POST request successful: {result}")
+                else:
+                    logger.error(f"Failed POST request with status {response.status}")
+        except Exception as e:
+            logger.error(f"Error occurred: {e}")
+
+async def process_requests_in_backround(data_list):
+    tasks = [send_post_request(f'{ORDER_SERVICE_URL}post_order', data) for data in data_list]
+    await asyncio.gather(*tasks)
+
 def call_get(url):
     """Helper function to call a GET request to an atomic service."""
     try:
@@ -68,9 +87,7 @@ def call_get_urls(urls, user_id=None):
     result = defaultdict(list)
     for u in urls:
         get = u['href']+ u['rel'] + f'?user_id={user_id}'
-        # print(get)
         r = call_get(get)
-        print(r)
         if r is not None:
             t = r.get(u["ms"])
             result[u["ms"]].append(t)
@@ -79,13 +96,17 @@ def call_get_urls(urls, user_id=None):
     return result
 
 @app.route('/composite/<microservice>', methods=['GET', 'POST'])
-def composite(microservice):
+async def composite(microservice):
     """Handle composite requests for users, products, or orders."""
     try:
         if request.method == 'GET':
             response = handle_get_request(microservice)
         elif request.method == 'POST' and microservice == 'post_product':
             response = forward_post_to_products()
+        elif request.method == 'POST' and microservice == 'post_order':
+            data_list = request.get_json()
+            await process_requests_in_backround(data_list)
+            return jsonify({"message": "Request accepted and processing"}), 202
         else:
             return jsonify({"error": "Invalid request"}), 400
         return jsonify(response)
@@ -119,6 +140,7 @@ def forward_post_to_products():
         return {"message": "Product posted successfully"}
     else:
         return response.json()
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8891, debug=True)
