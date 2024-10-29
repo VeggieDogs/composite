@@ -1,4 +1,3 @@
-import re
 from flask import Flask, request, jsonify, g
 import asyncio
 import aiohttp
@@ -65,6 +64,8 @@ async def send_post_request(url, orders):
             logger.error(f"Error occurred: {e}")
 
 async def process_requests_in_backround(data_list):
+    if type(data_list) != list:
+        data_list = [data_list]
     tasks = [send_post_request(f'{ORDER_SERVICE_URL}post_order', data) for data in data_list]
     await asyncio.gather(*tasks)
 
@@ -120,7 +121,7 @@ def handle_get_request(microservice):
         param = request.args.get('order_id')
         return requests.get(urls[2]['href'] + (f'search_order?order_id={param}' if param else '')).json()
     elif microservice == 'products':
-        param = request.args.get('product_id')
+        param = request.args.get('product_name')
         return requests.get(urls[1]['href'] + (f'search_product?product_name={param}' if param else '')).json()
     elif microservice == 'users':
         param = request.args.get('user_id')
