@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, g
+from flask import Flask, request, jsonify, g 
 import asyncio
 import aiohttp
 from collections import defaultdict
@@ -110,7 +110,7 @@ async def composite(microservice):
             return jsonify({"message": "Request accepted and processing"}), 202
         else:
             return jsonify({"error": "Invalid request"}), 400
-        return jsonify(response)
+        return response
     except Exception as e:
         logger.error(f"Error handling composite request: {e}")
         return jsonify({"error": "An error occurred while processing the request"}), 500
@@ -133,14 +133,37 @@ def handle_get_request(microservice):
 
 def forward_post_to_products():
     """Forwards the POST request to the products microservice."""
-    data = request.json
+    data = request.json  # Extract JSON from the incoming request
     product_url = urls[1]['href']  # URL for the products microservice
+
     logger.info(f"Forwarding POST request to: {product_url}/post_product")
-    response = requests.post(f"{product_url}/post_product", json=data)
-    if response.status_code == 201:
-        return {"message": "Product posted successfully"}
-    else:
-        return response.json()
+
+    try:
+        # Forward the request to the product microservice
+        response = requests.post(f"{product_url}/post_product", json=data)
+
+        # If the response status code is 201, return success
+        if response.status_code == 201:
+            logger.info("Product posted successfully.")
+            return jsonify({"message": "Product posted successfully"}), 201
+
+        else:
+            # Safely attempt to parse the JSON response
+            try:
+                response_data = response.json()
+            except ValueError:  # Handle non-JSON responses
+                response_data = {"error": response.text}
+
+            logger.error(f"Error from product microservice: {response.status_code} - {response_data}")
+            return jsonify(response_data), response.status_code
+
+    except requests.exceptions.RequestException as e:
+        # Handle network or other request-related errors
+        logger.exception("Exception occurred while forwarding request to product microservice.")
+        return jsonify({
+            "error": "Failed to connect to product microservice.",
+            "details": str(e)
+        }), 500
 
 
 if __name__ == '__main__':
