@@ -1,0 +1,13 @@
+# Examples of using composite mircroservice to connect to atomic microservices
+
+## Accessing user microservice using Composite
+http://localhost:8891/users?username=a
+
+## Acessing product mircroservice using Composite
+http://localhost:8891/products?product_name=a
+
+## Acessing order mircroservice using Composite
+http://localhost:8891/orders?order_id=1
+
+## Accessing all 3 at once
+http://localhost:8891/all?user_id=1
