@@ -86,7 +86,7 @@ def call_get(url):
     """Helper function to call a GET request to an atomic service."""
     try:
         logger.info(f"Calling GET {url}")
-        response = requests.get(url)
+        response = requests.get(url, headers=g.headers)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.HTTPError as err:
