@@ -77,7 +77,7 @@ def authorize():
     resp = google.get('userinfo')  # This will now work because base URL is set
     user_info = resp.json()
     session['profile'] = user_info
-    return redirect('/dashboard')
+    return redirect('http://localhost:3000/search')
 
 @app.after_request
 def log_response(response):
