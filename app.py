@@ -1,3 +1,5 @@
+from flask import Flask, redirect, request, url_for, session
+from authlib.integrations.flask_client import OAuth
 from flask import Flask, request, jsonify, g
 import asyncio
 import aiohttp
@@ -23,10 +25,10 @@ USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', f'http://localhost:5002/')
 ORDER_SERVICE_URL = os.getenv('ORDER_SERVICE_URL', f'http://localhost:5003/')
 
 COMPOSITE_PORT = os.getenv('COMPOSITE_PORT', 5000)
+from datetime import timedelta
 
-# Initialize Flask app
-app = Flask(__name__)
-CORS(app)
+app.secret_key = '1234567'  # Replace with your secret key
+app.permanent_session_lifetime = timedelta(minutes = 5)
 
     # Create a logger instance for the app
 logger = logging.getLogger(__name__)
@@ -37,13 +39,25 @@ handler = logging.StreamHandler()  # Send logs to stdout
 handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 logger.addHandler(handler)
 
-
 # Store the URLs in a list for easy iteration
 urls = [
     {"ms": "users", "rel": "search_user_by_id", "href": USER_SERVICE_URL},
     {"ms": "products","rel": "search_products_by_user_id", "href": PRODUCT_SERVICE_URL},
     {"ms": "orders","rel": "search_orders_by_id", "href": ORDER_SERVICE_URL},
 ]
+
+# OAuth 2 client setup
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id='199330867043-0mhq3ask42fedk3istp4u5vvajb4o4k5.apps.googleusercontent.com',
+    client_secret='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',
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    api_base_url='https://www.googleapis.com/oauth2/v3/',
+    client_kwargs={
+        'scope': 'openid email profile'
+    }
+)
 
 @app.before_request
 def log_request():
@@ -55,6 +69,15 @@ def log_request():
     logger.info(f"BEFORE_REQUEST -- CID: {correlation_id}")
     logger.info(f"Incoming {request.method} request to {request.path}")
     logger.info(f"Query parameters: {request.args}\n")
+# Then in your authorize route, you can use:
+@app.route('/authorize')
+def authorize():
+    google = oauth.create_client('google')
+    token = google.authorize_access_token()
+    resp = google.get('userinfo')  # This will now work because base URL is set
+    user_info = resp.json()
+    session['profile'] = user_info
+    return redirect('/dashboard')
 
 @app.after_request
 def log_response(response):
@@ -76,6 +99,7 @@ async def send_post_request(url, orders):
         except Exception as e:
             logger.error(f"Error occurred: {e}")
 
+# Homepage route
 async def process_requests_in_background(data_list):
     if type(data_list) != list:
         data_list = [data_list]
@@ -95,6 +119,12 @@ def call_get(url):
     except Exception as err:
         logger.error(f"An error occurred: {err}")
         return None
+# Login route
+@app.route('/login')
+def login():
+    google = oauth.create_client('google')
+    redirect_uri = url_for('authorize', _external = True)
+    return google.authorize_redirect(redirect_uri)
 
 def call_get_urls(urls, user_id=None):
     """Calls multiple atomic services and returns aggregated results."""
@@ -146,6 +176,71 @@ def handle_get_request(microservice):
         return call_get_urls(urls, param)
     return {"error": "Unknown microservice"}
 
+# Dashboard route (fake website after login)
+@app.route('/dashboard')
+def dashboard():
+    profile = session.get('profile')
+    if not profile:
+        return redirect('/')
+
+    return f'''
+        <html>
+            <head>
+                <title>Dashboard</title>
+                <style>
+                    body {{
+                        font-family: Arial, sans-serif;
+                        margin: 0;
+                        padding: 20px;
+                        background-color: #f0f2f5;
+                    }}
+                    .dashboard-container {{
+                        max-width: 800px;
+                        margin: 0 auto;
+                        background-color: white;
+                        padding: 20px;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                    }}
+                    .welcome-message {{
+                        color: #1a73e8;
+                    }}
+                    .user-info {{
+                        margin-top: 20px;
+                        padding: 15px;
+                        background-color: #f8f9fa;
+                        border-radius: 4px;
+                    }}
+                    .logout-button {{
+                        background-color: #dc3545;
+                        color: white;
+                        padding: 10px 20px;
+                        border: none;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        text-decoration: none;
+                        display: inline-block;
+                        margin-top: 20px;
+                    }}
+                    .logout-button:hover {{
+                        background-color: #c82333;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="dashboard-container">
+                    <h1 class="welcome-message">Welcome to Your Dashboard</h1>
+                    <div class="user-info">
+                        <h2>User Profile</h2>
+                        <p><strong>Name:</strong> {profile.get('name', 'N/A')}</p>
+                        <p><strong>Email:</strong> {profile.get('email', 'N/A')}</p>
+                    </div>
+                    <a href="/logout" class="logout-button">Logout</a>
+                </div>
+            </body>
+        </html>
+    '''
+
 def forward_post_to_products():
     """Forwards the POST request to the products microservice."""
     data = request.json  # Extract JSON from the incoming request
@@ -179,6 +274,12 @@ def forward_post_to_products():
             "error": "Failed to connect to product microservice.",
             "details": str(e)
         }), 500
+
+# Logout route
+@app.route('/logout')
+def logout():
+    session.pop('profile', None)
+    return redirect('/')
 
 @app.route('/')
 def health_check():
